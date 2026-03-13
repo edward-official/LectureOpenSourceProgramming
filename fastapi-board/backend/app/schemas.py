@@ -7,6 +7,11 @@ class PostCreate(BaseModel):
     content: str
 
 
+class PostUpdate(BaseModel):
+    title: str | None = None
+    content: str | None = None
+
+
 class PostResponse(BaseModel):
     id: int
     title: str

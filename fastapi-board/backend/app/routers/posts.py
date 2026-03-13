@@ -1,6 +1,6 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from app.database import get_db
-from app.schemas import PostCreate, PostResponse
+from app.schemas import PostCreate, PostUpdate, PostResponse
 
 router = APIRouter(prefix="/api/posts", tags=["posts"])
 
@@ -23,3 +23,46 @@ async def list_posts(pool=Depends(get_db)):
             "SELECT * FROM posts ORDER BY created_at DESC"
         )
     return [dict(row) for row in rows]
+
+
+@router.get("/{post_id}", response_model=PostResponse)
+async def get_post(post_id: int, pool=Depends(get_db)):
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT * FROM posts WHERE id = $1", post_id
+        )
+    if not row:
+        raise HTTPException(status_code=404, detail="Post not found")
+    return dict(row)
+
+
+@router.put("/{post_id}", response_model=PostResponse)
+async def update_post(post_id: int, post: PostUpdate, pool=Depends(get_db)):
+    async with pool.acquire() as conn:
+        existing = await conn.fetchrow(
+            "SELECT * FROM posts WHERE id = $1", post_id
+        )
+        if not existing:
+            raise HTTPException(status_code=404, detail="Post not found")
+
+        new_title = post.title if post.title is not None else existing["title"]
+        new_content = post.content if post.content is not None else existing["content"]
+
+        row = await conn.fetchrow(
+            "UPDATE posts SET title = $1, content = $2 WHERE id = $3 RETURNING *",
+            new_title,
+            new_content,
+            post_id,
+        )
+    return dict(row)
+
+
+@router.delete("/{post_id}", status_code=204)
+async def delete_post(post_id: int, pool=Depends(get_db)):
+    async with pool.acquire() as conn:
+        result = await conn.execute(
+            "DELETE FROM posts WHERE id = $1", post_id
+        )
+    if result == "DELETE 0":
+        raise HTTPException(status_code=404, detail="Post not found")
+
